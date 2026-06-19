@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Second Cerveau Cognitif</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav id="nav-sidebar">
+        <button class="nav-btn active" id="btn-view-user" title="Mode Utilisateur (Apprentissage)">👤</button>
+        <button class="nav-btn" id="btn-view-spec" title="Mode Spécificateur (Édition)">🛠️</button>
+        <button class="nav-btn" id="btn-view-settings" title="Paramètres Moteur IA">⚙️</button>
+        <div id="queue-indicator" title="Tâches IA en arrière-plan">
+            <span id="queue-count">0</span>
+            <div class="spinner" id="queue-spinner" style="display:none;"></div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        
+        <div id="cy-container"></div>
+
+        <div id="user-view" class="side-panel active">
+            <h2>Journal d'Apprentissage</h2>
+            <hr class="separator">
+            
+            <div class="panel-section">
+                <h3>💡 Consigner un Concept</h3>
+                <label for="user-note-input">Qu'avez-vous appris aujourd'hui ?</label>
+                <textarea id="user-note-input" rows="4" placeholder="Ex: Aujourd'hui j'ai compris que la loi d'Ohm relie la tension U à l'intensité I par la formule U = R x I..."></textarea>
+                <button id="btn-submit-note" class="btn-action primary">Envoyer à l'IA</button>
+            </div>
+
+            <div class="panel-section" style="margin-top: 20px;">
+                <h3>📝 Ajouter du Vocabulaire</h3>
+                <div class="form-group">
+                    <label for="vocab-lang">Langue :</label>
+                    <input type="text" id="vocab-lang" placeholder="Ex: Anglais, Espagnol...">
+                </div>
+                <div class="form-group">
+                    <label for="vocab-terme">Mot / Recto :</label>
+                    <input type="text" id="vocab-terme" placeholder="Ex: Subtle">
+                </div>
+                <div class="form-group">
+                    <label for="vocab-def">Traduction / Verso :</label>
+                    <input type="text" id="vocab-def" placeholder="Ex: Subtil, nuancé">
+                </div>
+                <button id="btn-submit-vocab" class="btn-action success">Ajouter la Flashcard</button>
+            </div>
+            
+            <div class="panel-section" style="margin-top: 20px; background-color: #f0f3f4; border-left: 4px solid #f1c40f;">
+                <h3>⚡ Session de Rappel</h3>
+                <p class="info-text" style="margin-bottom: 10px;">Sélectionnez un mot jaune ou un nœud de Langue sur le graphe, puis lancez le test.</p>
+                <button id="btn-start-quiz-vocab" class="btn-action warning" style="width: 100%;">🧠 Lancer la Révision Vocabulaire</button>
+            </div>
+        </div>
+
+        <div id="spec-view" class="side-panel">
+            <h2>Outils d'Édition</h2>
+            <hr class="separator">
+            
+            <p class="info-text">En tant que spécificateur, vous pouvez glisser-déposer les nœuds librement.</p>
+
+            <div class="panel-section">
+                <h3>Sélection : <span id="spec-selected-label">Aucun</span></h3>
+                <div class="btn-group-vert">
+                    <button id="btn-spec-delete" class="btn-action danger" disabled>🗑️ Supprimer le nœud</button>
+                </div>
+            </div>
+
+            <div class="panel-section" style="margin-top: 20px;">
+                <h3>Structure Manuelle</h3>
+                <div class="form-group">
+                    <label for="spec-node-label">Nom du nœud :</label>
+                    <input type="text" id="spec-node-label" placeholder="Nom du concept...">
+                </div>
+                <div class="btn-group-horiz">
+                    <button id="btn-spec-add-child" class="btn-action primary" disabled>👶 Ajouter un enfant</button>
+                    <button id="btn-spec-add-root" class="btn-action warning">🌐 Nouvelle Racine</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-view" class="side-panel">
+            <h2>Paramètres du moteur d'IA</h2>
+            <hr class="separator">
+
+            <div class="form-group">
+                <label for="ia-mode">Fournisseur d'IA</label>
+                <select id="ia-mode">
+                    <option value="local">IA Locale (Ollama / Localhost)</option>
+                    <option value="cloud">IA Cloud (API externe)</option>
+                </select>
+            </div>
+
+            <div id="local-settings" class="ia-sub-panel">
+                <div class="form-group">
+                    <label for="local-url">URL de l'API Locale</label>
+                    <input type="text" id="local-url" value="http://127.0.0.1:1234/v1/chat/completions">
+                </div>
+                <div class="form-group">
+                    <label for="local-model">Nom du modèle local</label>
+                    <input type="text" id="local-model" value="meta-llama-3.1-8b-instruct">
+                </div>
+            </div>
+
+            <div id="cloud-settings" class="ia-sub-panel" style="display: none;">
+                <div class="form-group">
+                    <label for="cloud-key">Clé API</label>
+                    <input type="password" id="cloud-key" placeholder="Entrez votre clé API...">
+                </div>
+                <div class="form-group">
+                    <label for="cloud-quota">Quota maximum de tokens alloués</label>
+                    <input type="number" id="cloud-quota" value="50000">
+                </div>
+            </div>
+            
+            <div style="margin-top:20px;">
+                <button id="btn-clear-data" class="btn-action danger" style="width:100%;">🗑️ Vider la base locale</button>
+            </div>
+        </div>
+
+    </main>
+    <div id="evaluation-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <span class="modal-close" id="close-modal">&times;</span>
+            <h3 id="modal-title">Évaluation</h3>
+            <div id="modal-body">
+                </div>
+            <div id="modal-footer">
+                </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

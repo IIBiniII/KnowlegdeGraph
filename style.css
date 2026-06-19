@@ -1,0 +1,138 @@
+:root {
+    --bg-color: #f5f6fa;
+    --sidebar-bg: #1e272e;
+    --panel-bg: #ffffff;
+    --primary: #3498db;
+    --danger: #e74c3c;
+    --success: #2ecc71;
+    --warning: #e67e22;
+    --text-dark: #2c3e50;
+    --border-color: #e2e8f0;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    margin: 0; padding: 0;
+    display: flex; height: 100vh;
+    background-color: var(--bg-color);
+    overflow: hidden;
+}
+
+/* Barre de navigation latérale */
+#nav-sidebar {
+    width: 70px;
+    background-color: var(--sidebar-bg);
+    display: flex; flex-direction: column;
+    align-items: center; padding-top: 20px; gap: 20px;
+    position: relative;
+}
+
+.nav-btn {
+    background: none; border: none;
+    color: #808e9b; font-size: 1.6rem;
+    cursor: pointer; transition: color 0.2s, transform 0.1s;
+}
+.nav-btn:hover { color: #ffffff; }
+.nav-btn.active { color: var(--primary); transform: scale(1.1); }
+
+/* Indicateur de file d'attente */
+#queue-indicator {
+    position: absolute; bottom: 20px;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    color: #fff; font-size: 0.8rem; font-weight: bold;
+}
+#queue-count { background: var(--warning); padding: 2px 7px; border-radius: 10px; }
+
+.spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3); border-radius: 50%;
+    border-top-color: #fff; animation: spin 1s ease-in-out infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Conteneur principal */
+.main-content {
+    flex-grow: 1; display: flex; position: relative; height: 100%;
+}
+
+/* Panneaux latéraux interchangeables */
+.side-panel {
+    width: 320px; min-width: 320px; height: 100%;
+    background: var(--panel-bg); border-right: 1px solid var(--border-color);
+    box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+    padding: 20px; box-sizing: border-box;
+    display: none; flex-direction: column; overflow-y: auto;
+    z-index: 5;
+}
+.side-panel.active { display: flex; }
+
+.side-panel h2 { margin-top: 0; color: var(--text-dark); font-size: 1.4rem; }
+.side-panel h3 { margin: 0 0 10px 0; font-size: 1rem; color: #555; }
+.separator { border: 0; border-top: 1px solid var(--border-color); margin-bottom: 20px; }
+.panel-section { background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #edf2f7; }
+
+/* Formulaires */
+.form-group { margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 0.85rem; font-weight: bold; color: #4a5568; }
+input[type="text"], input[type="password"], input[type="number"], textarea, select {
+    padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;
+    font-family: inherit; font-size: 0.9rem; box-sizing: border-box; width: 100%;
+}
+textarea { resize: vertical; }
+
+/* Boutons d'action */
+.btn-action {
+    border: none; padding: 10px; border-radius: 4px; color: white;
+    font-weight: bold; cursor: pointer; font-size: 0.9rem; transition: background 0.2s;
+}
+.btn-action:disabled { background-color: #cbd5e0 !important; cursor: not-allowed; }
+.primary { background-color: var(--primary); } .primary:hover { background-color: #2980b9; }
+.success { background-color: var(--success); } .success:hover { background-color: #27ae60; }
+.danger { background-color: var(--danger); } .danger:hover { background-color: #c0392b; }
+.warning { background-color: var(--warning); } .warning:hover { background-color: #d35400; }
+
+.btn-group-vert { display: flex; flex-direction: column; gap: 8px; }
+.btn-group-horiz { display: flex; gap: 8px; margin-top: 5px; }
+.btn-group-horiz button { flex: 1; }
+
+.info-text { font-size: 0.8rem; color: #718096; font-style: italic; margin-top: 0; }
+
+/* Zone du graphe Cytoscape */
+#cy-container {
+    flex-grow: 1; height: 100%; background-color: #f7fafc; position: relative;
+}
+
+
+/* MODAL STYLE */
+
+/* Superposition en arrière-plan de la modale */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 9999; /* Toujours au-dessus de tout le reste */
+}
+
+/* Boîte de dialogue blanche centrale */
+.modal-content {
+    background-color: #ffffff;
+    padding: 30px; border-radius: 8px;
+    width: 90%; max-width: 500px;
+    box-shadow: 0 4px 25px rgba(0,0,0,0.25);
+    position: relative;
+    max-height: 80vh; overflow-y: auto;
+}
+
+/* Bouton de fermeture de la modale (la croix) */
+.modal-close {
+    position: absolute;
+    top: 15px; right: 20px;
+    font-size: 1.8rem; cursor: pointer;
+    color: #7f8c8d; transition: color 0.2s;
+}
+.modal-close:hover { color: var(--danger); }
+
+#modal-title { margin-top: 0; margin-bottom: 20px; color: var(--text-dark); border-bottom: 2px solid var(--border-color); padding-bottom: 10px; }
+#modal-footer { margin-top: 25px; display: flex; gap: 10px; }
