@@ -27,7 +27,7 @@ async function sauvegarderGrapheEnDur() {
     if (!cy) return;
     
     let elementsGraphe = cy.elements().jsons();
-    
+
     if (!Array.isArray(elementsGraphe)) {
         elementsGraphe = [elementsGraphe];
     }
@@ -149,7 +149,8 @@ const AppState = {
         quotaMax: 50000
     },
     vueActuelle: 'user', // 'user' ou 'spec' ou 'settings'
-    noeudSelectionneId: null
+    noeudSelectionneId: null,
+    motsConnusMasques: false
 };
 
 // =========================================================================
@@ -256,6 +257,8 @@ function initComportementsInterface() {
     document.getElementById('btn-submit-vocab').addEventListener('click', traiterAjoutVocabulaireDirect);
     document.getElementById('action-evaluate')?.addEventListener('click', lancerRevisionNoeud);
     document.getElementById('btn-start-quiz-vocab')?.addEventListener('click', lancerRevisionNoeud);
+    document.getElementById('vocab-csv-file').addEventListener('change', traiterImportCSVVocabulaire);
+    document.getElementById('btn-toggle-connus').addEventListener('click', basculerVisibiliteMotsConnus);
     
 
     // ÉCOUTEURS VUE SPÉCIFICATEUR
@@ -344,6 +347,21 @@ async function initCytoscape() {
             {
                 selector: 'edge',
                 style: { 'width': 2, 'line-color': '#cbd5e0', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#cbd5e0', 'curve-style': 'bezier' }
+            },
+            {
+                selector: 'node[statut="connu"]',
+                style: {
+                    'background-color': '#2ecc71', 
+                    'border-width': '2px',
+                    'border-color': '#27ae60',     
+                    'opacity': 0.85                
+                }
+            },
+            {
+                selector: 'edge[statut="connu"]', 
+                style: {
+                    'display': 'none'
+                }
             }
         ],
         layout: estPreset ? { name: 'preset' } : { name: 'cose', animate: false }
@@ -393,6 +411,11 @@ function redessinerGraphe() {
 
     // 3. On lance l'exécution de la mise en page
     layoutGraphe.run();
+
+    if (AppState.motsConnusMasques) {
+        cy.nodes('[statut="connu"]').style('display', 'none');
+        cy.nodes('[statut="connu"]').connectedEdges().style('display', 'none');
+    }
 }
 
 // =========================================================================
@@ -519,7 +542,7 @@ function traiterAjoutVocabulaireDirect() {
     // 2. On ajoute le mot de vocabulaire lié à cette langue
     const idVocab = `vocab_${Date.now()}`;
     cy.add([
-        { group: 'nodes', data: { id: idVocab, label: `${terme} : ${def}`, type: 'vocab' } },
+        { group: 'nodes', data: { id: idVocab, label: `${terme} : ${def}`, type: 'vocab',statut: 'a_reviser' } },
         { group: 'edges', data: { id: `e_voc_${Date.now()}`, source: idLangNode, target: idVocab } }
     ]);
 
@@ -643,17 +666,19 @@ function lancerSessionVocabulaireGlobale(listeNoeudsMots, nomLangue) {
         });
 
         document.getElementById('btn-serie-wrong').addEventListener('click', () => {
-            noeudCourant.style('background-color', '#e74c3c'); // Devient rouge dans le graphe
+            noeudCourant.data('statut', 'a_reviser'); // Échec
+            noeudCourant.style('background-color', '#e74c3c');
             indexActuel++;
-            sauvegarderGraphe();
+            sauvegarderGrapheEnDur();
             afficherMotCourant();
         });
 
         document.getElementById('btn-serie-right').addEventListener('click', () => {
-            noeudCourant.style('background-color', '#2ecc71'); // Devient vert dans le graphe
+            noeudCourant.data('statut', 'connu'); // <-- SUCCÈS !
+            noeudCourant.style('background-color', '#2ecc71');
             reponsesJustes++;
             indexActuel++;
-            sauvegarderGraphe();
+            sauvegarderGrapheEnDur();
             afficherMotCourant();
         });
     }
@@ -707,17 +732,22 @@ function lancerFlashcardLocal(node) {
         document.getElementById('flashcard-actions').style.display = 'flex';
     });
 
-    // Événements d'auto-évaluation
-    document.getElementById('btn-card-wrong').addEventListener('click', () => {
-        node.style('background-color', '#e74c3c'); // Devient rouge dans le graphe
+    // Événement Succès (Bouton Vert)
+    document.getElementById('btn-card-right').addEventListener('click', () => {
+        node.data('statut', 'connu'); // <-- Change le statut en dur dans Cytoscape
+        node.style('background-color', '#2ecc71'); // Optionnel : garde la couleur verte si affiché
         modal.style.display = 'none';
-        sauvegarderGraphe();
+        
+        sauvegarderGrapheEnDur(); // Sauvegarde instantanée dans le fichier JSON
     });
 
-    document.getElementById('btn-card-right').addEventListener('click', () => {
-        node.style('background-color', '#2ecc71'); // Devient vert dans le graphe
+    // Événement Échec (Bouton Rouge)
+    document.getElementById('btn-card-wrong').addEventListener('click', () => {
+        node.data('statut', 'a_reviser'); // Reste ou repasse à réviser
+        node.style('background-color', '#e74c3c');
         modal.style.display = 'none';
-        sauvegarderGraphe();
+        
+        sauvegarderGrapheEnDur();
     });
 }
 
@@ -736,11 +766,124 @@ function lancerRevisionNoeud() {
         lancerFlashcardLocal(node);
     } else if (node.data('label') && node.data('label').startsWith('Vocabulaire :')) {
         // Mode Session globale : réviser TOUS les mots de cette langue
-        const motsDeLaLangue = node.neighborhood('node[type="vocab"]');
+        const motsDeLaLangue = node.neighborhood('node[type="vocab"]').filter(n => n.data('statut') !== 'connu');
         if (motsDeLaLangue.length === 0) return alert("Aucun mot à réviser dans cette langue.");
         
         lancerSessionVocabulaireGlobale(motsDeLaLangue.toArray(), node.data('label'));
     } else {
         alert("Pour le moment, seules les flashcards de vocabulaire sont prêtes pour la révision.");
+    }
+}
+
+
+/**
+ * Lit un fichier CSV fourni par l'utilisateur et l'intègre en masse dans le graphe
+ */
+function traiterImportCSVVocabulaire(evenement) {
+    const inputLang = document.getElementById('vocab-lang');
+    const langue = inputLang.value.trim();
+
+    // 1. Validation de sécurité
+    if (!langue) {
+        alert("Veuillez d'abord saisir la Langue cible dans le champ ci-dessus avant de choisir le fichier CSV.");
+        evenement.target.value = ""; // Reset du fichier choisi
+        return;
+    }
+
+    const fichier = evenement.target.files[0];
+    if (!fichier) return;
+
+    const lecteur = new FileReader();
+    
+    lecteur.onload = function(e) {
+        const texteBrut = e.target.result;
+        // Découpage par ligne (gère les retours à la ligne Windows et Unix)
+        const lignes = texteBrut.split(/\r?\n/);
+        
+        // Préparation du nœud racine de la langue
+        let idLangNode = `lang_${langue.toLowerCase().replace(/\s/g, '')}`;
+        const noeudLangExiste = cy.getElementById(idLangNode).length > 0;
+        
+        const elementsAAjouter = [];
+
+        if (!noeudLangExiste) {
+            elementsAAjouter.push({ group: 'nodes', data: { id: idLangNode, label: `Vocabulaire : ${langue}`, type: 'concept' } });
+            elementsAAjouter.push({ group: 'edges', data: { id: `e_lang_${Date.now()}`, source: 'root_general', target: idLangNode } });
+        }
+
+        let compteurMots = 0;
+
+        // 2. Analyse de chaque ligne du CSV
+        lignes.forEach((ligne, index) => {
+            if (!ligne.trim()) return; // Ignore les lignes vides
+
+            // Détection dynamique du séparateur (point-virgule ou virgule)
+            const separateur = ligne.includes(';') ? ';' : ',';
+            const colonnes = ligne.split(separateur);
+
+            if (colonnes.length >= 2) {
+                const terme = colonnes[0].trim();
+                const definition = colonnes[1].trim();
+
+                if (terme && definition) {
+                    const idVocab = `vocab_${Date.now()}_csv_${index}`;
+                    
+                    // Ajout du nœud mot
+                    elementsAAjouter.push({
+                        group: 'nodes',
+                        data: { id: idVocab, label: `${terme} : ${definition}`, type: 'vocab',statut: 'a_reviser' }
+                    });
+                    // Ajout du lien vers sa langue
+                    elementsAAjouter.push({
+                        group: 'edges',
+                        data: { id: `e_voc_${Date.now()}_csv_${index}`, source: idLangNode, target: idVocab }
+                    });
+                    compteurMots++;
+                }
+            }
+        });
+
+        // 3. Injection globale et synchronisation en dur
+        if (elementsAAjouter.length > 0) {
+            cy.add(elementsAAjouter);
+            redessinerGraphe(); // Rangement automatique et sauvegarde fichier JSON
+            alert(`Succès ! ${compteurMots} flashcards ont été importées dans la catégorie [${langue}].`);
+        } else {
+            alert("Aucune donnée valide n'a pu être extraite. Vérifiez le format : Terme;Définition");
+        }
+
+        // Reset de l'input file pour permettre une nouvelle sélection future
+        evenement.target.value = "";
+    };
+
+    lecteur.readAsText(fichier, 'UTF-8');
+}
+
+/**
+ * Alterne l'affichage des nœuds de vocabulaire marqués comme "connu"
+ */
+function basculerVisibiliteMotsConnus() {
+    const bouton = document.getElementById('btn-toggle-connus');
+    
+    // Inversion de l'état
+    AppState.motsConnusMasques = !AppState.motsConnusMasques;
+
+    if (AppState.motsConnusMasques) {
+        // On cherche tous les nœuds ayant le statut 'connu' et on les cache
+        // .style() applique un changement visuel immédiat en mémoire sans altérer le JSON en dur
+        cy.nodes('[statut="connu"]').style('display', 'none');
+        
+        // Optionnel : on cache aussi les liens connectés à ces nœuds pour éviter les lignes orphelines
+        cy.nodes('[statut="connu"]').connectedEdges().style('display', 'none');
+
+        bouton.innerText = "👁️ Afficher les mots connus";
+        bouton.style.backgroundColor = "#27ae60"; // Devient vert pour indiquer qu'on filtre
+    } else {
+        // On réaffiche tout le monde
+        cy.nodes('[statut="connu"]').style('display', 'element');
+        cy.nodes('[statut="connu"]').connectedEdges().style('display', 'element');
+
+        bouton.innerText = "👁️ Masquer les mots connus";
+        bouton.style.backgroundColor = "#34495e"; // Reprend sa couleur sombre
     }
 }

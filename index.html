@@ -27,6 +27,7 @@
             <h2>Journal d'Apprentissage</h2>
             <hr class="separator">
             
+            
             <div class="panel-section">
                 <h3>💡 Consigner un Concept</h3>
                 <label for="user-note-input">Qu'avez-vous appris aujourd'hui ?</label>
@@ -34,7 +35,7 @@
                 <button id="btn-submit-note" class="btn-action primary">Envoyer à l'IA</button>
             </div>
 
-            <div class="panel-section" style="margin-top: 20px;">
+           <div class="panel-section" style="margin-top: 20px;">
                 <h3>📝 Ajouter du Vocabulaire</h3>
                 <div class="form-group">
                     <label for="vocab-lang">Langue :</label>
@@ -49,12 +50,21 @@
                     <input type="text" id="vocab-def" placeholder="Ex: Subtil, nuancé">
                 </div>
                 <button id="btn-submit-vocab" class="btn-action success">Ajouter la Flashcard</button>
+                
+                <div style="margin-top: 15px; border-top: 1px dashed var(--border-color); padding-top: 15px;">
+                    <label for="vocab-csv-file" style="font-size: 0.85rem; font-weight: bold; color: #4a5568; display: block; margin-bottom: 5px;">Ou importer un fichier CSV :</label>
+                    <input type="file" id="vocab-csv-file" accept=".csv" style="font-size: 0.8rem;">
+                </div>
             </div>
+
             
+
             <div class="panel-section" style="margin-top: 20px; background-color: #f0f3f4; border-left: 4px solid #f1c40f;">
                 <h3>⚡ Session de Rappel</h3>
                 <p class="info-text" style="margin-bottom: 10px;">Sélectionnez un mot jaune ou un nœud de Langue sur le graphe, puis lancez le test.</p>
-                <button id="btn-start-quiz-vocab" class="btn-action warning" style="width: 100%;">🧠 Lancer la Révision Vocabulaire</button>
+                <button id="btn-start-quiz-vocab" class="btn-action warning" style="width: 100%; margin-bottom: 10px;">🧠 Lancer la Révision Vocabulaire</button>
+                
+                <button id="btn-toggle-connus" class="btn-action" style="width: 100%; background-color: #34495e; color: white;">👁️ Masquer les mots connus</button>
             </div>
         </div>
 

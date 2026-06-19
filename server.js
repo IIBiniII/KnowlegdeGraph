@@ -4,12 +4,18 @@ const path = require('path');
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+// ================= CORRECTION CRITIQUE =================
+// On configure la limite TRÈS HAUTE directement sur express ET sur json
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// =======================================================
 
-// Rendre tes fichiers statiques (index.html, app.js, style.css) accessibles
+// Servir les fichiers de l'application (index.html, app.js, etc.)
 app.use(express.static(__dirname));
 
 const cheminFichier = path.join(__dirname, 'mindmap.json');
+
+// --- Tes routes /api/donnees et /api/sauvegarder restent en dessous ---
 
 // Route pour charger les données
 app.get('/api/donnees', (req, res) => {
