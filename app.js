@@ -20,6 +20,31 @@
 // };
 
 
+/**
+ * Envoie l'intégralité de la MindMap au serveur web pour écriture dans un fichier JSON en dur
+ */
+async function sauvegarderGrapheEnDur() {
+    if (!cy) return;
+    
+    let elementsGraphe = cy.elements().jsons();
+    
+    if (!Array.isArray(elementsGraphe)) {
+        elementsGraphe = [elementsGraphe];
+    }
+    
+    try {
+        const response = await fetch('/api/sauvegarder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(elementsGraphe) 
+        });
+        if (!response.ok) throw new Error(`Erreur serveur : ${response.status}`);
+        console.log("💾 Graphe envoyé au serveur.");
+    } catch (error) {
+        console.error("❌ Échec de la sauvegarde :", error);
+    }
+}
+
 
 // =========================================================================
 // 1. MOTEUR GLOBAL DE FILE D'ATTENTE IA (ASYNCHRONE ET NON BLOQUANT)
@@ -263,17 +288,37 @@ function chargerConfiguration() {
 // =========================================================================
 // 5. MOTEUR ET LOGIQUE DU GRAPHE CYTOSCAPE
 // =========================================================================
-function initCytoscape() {
-    let elementsInitiaux = [{ data: { id: 'root_general', label: 'Connaissances Générales', type: 'concept' } }];
-    const sauvegardeElements = localStorage.getItem('mindmap_elements');
-    if (sauvegardeElements) {
-        try { elementsInitiaux = JSON.parse(sauvegardeElements); } catch(e){}
+/**
+ * Initialise Cytoscape en récupérant d'abord le fichier JSON sur le serveur
+ */
+async function initCytoscape() {
+    // Structure par défaut si le fichier JSON du serveur est vide ou indisponible
+    let elementsInitiaux = [
+        { data: { id: 'root_general', label: 'Connaissances Générales', type: 'concept' } }
+    ];
+    let estPreset = false;
+
+    try {
+        // Requête vers le serveur pour lire le fichier JSON
+        const response = await fetch('/api/donnees'); 
+        if (response.ok) {
+            const donneesServeur = await response.json();
+            // On vérifie que le fichier contient bien des données valides
+            if (donneesServeur && donneesServeur.length > 0) {
+                elementsInitiaux = donneesServeur;
+                estPreset = true; // Permet de figer la position des nœuds
+                console.log("📖 Données chargées avec succès depuis le fichier JSON du serveur.");  
+            }
+        }
+    } catch (e) {
+        console.warn("Fichier JSON introuvable ou vide sur le serveur. Chargement de la racine par défaut.", e);
     }
 
+    // Initialisation de Cytoscape
     cy = cytoscape({
         container: document.getElementById('cy-container'),
         elements: elementsInitiaux,
-        autoungrabify: true, // Par défaut bloqué pour la vue utilisateur
+        autoungrabify: true, 
         style: [
             {
                 selector: 'node',
@@ -301,38 +346,53 @@ function initCytoscape() {
                 style: { 'width': 2, 'line-color': '#cbd5e0', 'target-arrow-shape': 'triangle', 'target-arrow-color': '#cbd5e0', 'curve-style': 'bezier' }
             }
         ],
-        layout: { name: 'cose', animate: false }
+        layout: estPreset ? { name: 'preset' } : { name: 'cose', animate: false }
     });
 
-    // Capture des clics pour le spécificateur
+    // Écouteurs de clics
     cy.on('tap', 'node', (evt) => {
         const node = evt.target;
         AppState.noeudSelectionneId = node.id();
-        if (AppState.vueActuelle !== 'spec') return;
-        mettreAJourControlesSpec();
+        if (AppState.vueActuelle === 'spec') mettreAJourControlesSpec();
     });
 
     cy.on('tap', (evt) => {
-        if (evt.target === cy && AppState.vueActuelle === 'spec') {
+        if (evt.target === cy) {
             AppState.noeudSelectionneId = null;
-            mettreAJourControlesSpec();
+            if (AppState.vueActuelle === 'spec') mettreAJourControlesSpec();
         }
     });
 
-    // Sauvegarder dès qu'un élément bouge en mode spécificateur
+    // Sauvegarde automatique dès qu'un élément est relâché par le spécificateur
     cy.on('free', 'node', () => {
-        if (AppState.vueActuelle === 'spec') sauvegarderGraphe();
+        if (AppState.vueActuelle === 'spec') sauvegarderGrapheEnDur();
     });
 }
 
 function sauvegarderGraphe() {
-    if (!cy) return;
-    localStorage.setItem('mindmap_elements', JSON.stringify(cy.elements().json()));
+    sauvegarderGrapheEnDur();
+    // if (!cy) return;
+    // localStorage.setItem('mindmap_elements', JSON.stringify(cy.elements().json()));
 }
 
 function redessinerGraphe() {
-    cy.layout({ name: 'cose', animate: true, animationDuration: 400 }).run();
-    sauvegarderGraphe();
+    if (!cy) return;
+
+    // 1. Déclaration et configuration de la mise en page
+    const layoutGraphe = cy.layout({ 
+        name: 'cose', 
+        animate: true, 
+        animationDuration: 400 
+    });
+
+    // 2. On attache l'écouteur d'événement sur cette instance précise
+    layoutGraphe.one('layoutstop', () => {
+        console.log("🔄 Animation de mise en page terminée. Lancement de la sauvegarde...");
+        sauvegarderGrapheEnDur(); 
+    });
+
+    // 3. On lance l'exécution de la mise en page
+    layoutGraphe.run();
 }
 
 // =========================================================================
@@ -445,28 +505,28 @@ function traiterAjoutVocabulaireDirect() {
 
     if (!lang || !terme || !def) return alert("Veuillez remplir tous les champs de vocabulaire.");
 
-    // ÉTAPE LOCAL SANS IA : On cherche si le nœud racine de la langue existe
     let idLangNode = `lang_${lang.toLowerCase().replace(/\s/g, '')}`;
     const noeudLangExiste = cy.getElementById(idLangNode).length > 0;
 
+    // 1. Si la langue n'existe pas, on l'ajoute à l'instance globale
     if (!noeudLangExiste) {
-        cy.add({
-            group: 'nodes',
-            data: { id: idLangNode, label: `Vocabulaire : ${lang}`, type: 'concept' }
-        });
-        cy.add({ group: 'edges', data: { id: `e_lang_${Date.now()}`, source: 'root_general', target: idLangNode } });
+        cy.add([
+            { group: 'nodes', data: { id: idLangNode, label: `Vocabulaire : ${lang}`, type: 'concept' } },
+            { group: 'edges', data: { id: `e_lang_${Date.now()}`, source: 'root_general', target: idLangNode } }
+        ]);
     }
 
-    // Ajout de la carte flashcard de vocabulaire attachée à la langue
+    // 2. On ajoute le mot de vocabulaire lié à cette langue
     const idVocab = `vocab_${Date.now()}`;
-    cy.add({
-        group: 'nodes',
-        data: { id: idVocab, label: `${terme} : ${def}`, type: 'vocab' }
-    });
-    cy.add({ group: 'edges', data: { id: `e_voc_${Date.now()}`, source: idLangNode, target: idVocab } });
+    cy.add([
+        { group: 'nodes', data: { id: idVocab, label: `${terme} : ${def}`, type: 'vocab' } },
+        { group: 'edges', data: { id: `e_voc_${Date.now()}`, source: idLangNode, target: idVocab } }
+    ]);
 
-    // Reset des inputs pour la saisie suivante
-    inputTerme.value = ""; inputDef.value = "";
+    // 3. Reset des champs et réorganisation (qui va déclencher la sauvegarde complète)
+    inputTerme.value = ""; 
+    inputDef.value = "";
+    
     redessinerGraphe();
 }
 
