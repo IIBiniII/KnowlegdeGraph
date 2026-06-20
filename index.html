@@ -55,6 +55,12 @@
                     <label for="vocab-csv-file" style="font-size: 0.85rem; font-weight: bold; color: #4a5568; display: block; margin-bottom: 5px;">Ou importer un fichier CSV :</label>
                     <input type="file" id="vocab-csv-file" accept=".csv" style="font-size: 0.8rem;">
                 </div>
+
+                <div style="margin-top: 15px; border-top: 1px dashed var(--border-color); padding-top: 15px;">
+                    <button id="btn-ouvrir-categoriseur" class="btn-action primary" style="background-color: #8e44ad; color: white; width: 100%; margin-top: 10px;">
+                        📁 Catégoriser la Langue
+                    </button>
+                </div>
             </div>
 
             
@@ -142,6 +148,46 @@
                 </div>
             <div id="modal-footer">
                 </div>
+        </div>
+    </div>
+
+    <div id="modal-categoriseur" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; backgroundColor: rgba(0,0,0,0.5); overflow-y: auto;">
+        <div class="modal-content" style="background-color: white; margin: 5% auto; padding: 25px; border-radius: 8px; width: 80%; max-width: 900px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px;">
+                <h2 id="categoriseur-titre">📁 Catégorisation : <span id="nom-langue-active">-</span></h2>
+                <span id="close-modal-cat" style="font-size: 28px; font-weight: bold; cursor: pointer; color: #a0aec0;">&times;</span>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin: 20px 0;">
+                <button id="btn-cat-suggerer-ia" class="btn-action" style="background-color: #3182ce; color: white;">🧠 Suggérer des thèmes via l'IA</button>
+                <div style="display: flex; gap: 5px; margin-left: auto;">
+                    <input type="text" id="nouvelle-cat-nom" placeholder="Nom de la nouvelle catégorie..." style="padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                    <button id="btn-cat-ajouter-manuel" class="btn-action success">➕ Ajouter</button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 20px; margin-top: 20px; min-height: 400px;">
+                
+                <div style="flex: 1; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; background: #f7fafc;">
+                    <h3 style="margin-top:0;">Vos Catégories</h3>
+                    <div id="liste-categories-zone" style="display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto;">
+                        </div>
+                </div>
+
+                <div id="zone-edition-categorie" style="flex: 2; border: 1px solid #e2e8f0; border-radius: 6px; padding: 15px; display: none;">
+                    <h3 style="margin-top:0;">Mots dans : <span id="edition-categorie-titre" style="color:#9b59b6;">-</span></h3>
+                    <p style="font-size: 0.85rem; color:#718096; margin-bottom: 15px;">Cochez les mots pour les ajouter à cette catégorie, décochez pour les retirer.</p>
+                    
+                    <div id="liste-mots-checkboxes" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 300px; overflow-y: auto; padding: 5px; border: 1px solid #edf2f7; border-radius: 4px;">
+                        </div>
+                </div>
+
+            </div>
+
+            <div style="margin-top: 20px; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                <button id="btn-cat-valider-fermer" class="btn-action success" style="padding: 10px 25px;">💾 Appliquer & Quitter</button>
+            </div>
         </div>
     </div>
 

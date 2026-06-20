@@ -259,6 +259,20 @@ function initComportementsInterface() {
     document.getElementById('btn-start-quiz-vocab')?.addEventListener('click', lancerRevisionNoeud);
     document.getElementById('vocab-csv-file').addEventListener('change', traiterImportCSVVocabulaire);
     document.getElementById('btn-toggle-connus').addEventListener('click', basculerVisibiliteMotsConnus);
+
+    // MODAL CATEGORISATEUR
+    // Ouverture et fermeture de la modale
+    document.getElementById('btn-ouvrir-categoriseur').addEventListener('click', ouvrirCategoriseur);
+    const fermerModale = () => {
+        document.getElementById('modal-categoriseur').style.display = 'none';
+        redessinerGraphe(); // Rangement spatial + Sauvegarde automatique en dur sur le serveur JSON !
+    };
+    document.getElementById('close-modal-cat').addEventListener('click', fermerModale);
+    document.getElementById('btn-cat-valider-fermer').addEventListener('click', fermerModale);
+    // Actions à l'intérieur de la modale
+    document.getElementById('btn-cat-ajouter-manuel').addEventListener('click', ajouterCategorieManuelle);
+    document.getElementById('btn-cat-suggerer-ia').addEventListener('click', suggererCategoriesViaIA);
+    
     
 
     // ÉCOUTEURS VUE SPÉCIFICATEUR
@@ -361,6 +375,15 @@ async function initCytoscape() {
                 selector: 'edge[statut="connu"]', 
                 style: {
                     'display': 'none'
+                }
+            },
+            {
+                selector: 'node[type="categorie"]',
+                style: {
+                    'background-color': '#9b59b6', // Violet
+                    'shape': 'diamond',            // Losange
+                    'width': '30px',
+                    'height': '30px'
                 }
             }
         ],
@@ -752,6 +775,15 @@ function lancerFlashcardLocal(node) {
 }
 
 
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    // Swap elements array[i] and array[j]
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
 /**
  * Lance le quiz approprié selon le type de nœud sélectionné
  */
@@ -761,17 +793,39 @@ function lancerRevisionNoeud() {
     const node = cy.getElementById(AppState.noeudSelectionneId);
     const type = node.data('type');
 
+    // CAS 1 : C'est une flashcard de mot classique
     if (type === 'vocab') {
-        // Mode Flashcard unique pour un mot précis
+        if (node.data('statut') === 'connu') return alert("Ce mot est déjà connu !");
         lancerFlashcardLocal(node);
-    } else if (node.data('label') && node.data('label').startsWith('Vocabulaire :')) {
-        // Mode Session globale : réviser TOUS les mots de cette langue
-        const motsDeLaLangue = node.neighborhood('node[type="vocab"]').filter(n => n.data('statut') !== 'connu');
-        if (motsDeLaLangue.length === 0) return alert("Aucun mot à réviser dans cette langue.");
+    } 
+    
+    // CAS 2 : L'utilisateur a cliqué sur une CATÉGORIE (nœud violet)
+    else if (type === 'categorie') {
+        // On récupère les mots uniquement liés à CETTE catégorie et non connus
+        const motsDeLaCategorie = node.neighborhood('node[type="vocab"]').filter(n => n.data('statut') !== 'connu');
         
-        lancerSessionVocabulaireGlobale(motsDeLaLangue.toArray(), node.data('label'));
+        if (motsDeLaCategorie.length === 0) {
+            return alert("Tous les mots de cette catégorie sont maîtrisés ! 🎉");
+        }
+        lancerSessionVocabulaireGlobale(motsDeLaCategorie.toArray(), `Catégorie : ${node.data('label')}`);
+    } 
+    
+    // CAS 3 : L'utilisateur a cliqué sur la racine de la LANGUE (ex: Vocabulaire : Anglais)
+    else if (node.data('label') && node.data('label').startsWith('Vocabulaire :')) {
+        // On récupère les mots branchés directement à la langue ET ceux branchés dans ses sous-catégories
+        const motsDirects = node.neighborhood('node[type="vocab"]');
+        const motsDesCategories = node.neighborhood('node[type="categorie"]').neighborhood('node[type="vocab"]');
+        
+        // Fusion des deux listes et filtrage des mots déjà connus
+        const tousLesMotsA_Reviser = motsDirects.union(motsDesCategories).filter(n => n.data('statut') !== 'connu');
+
+        if (tousLesMotsA_Reviser.length === 0) {
+            return alert("Félicitations ! Aucun mot à réviser dans toute la langue ! 🏆");
+        }
+        
+        lancerSessionVocabulaireGlobale(tousLesMotsA_Reviser.toArray(), node.data('label'));
     } else {
-        alert("Pour le moment, seules les flashcards de vocabulaire sont prêtes pour la révision.");
+        alert("Ce nœud ne peut pas être révisé.");
     }
 }
 
@@ -885,5 +939,263 @@ function basculerVisibiliteMotsConnus() {
 
         bouton.innerText = "👁️ Masquer les mots connus";
         bouton.style.backgroundColor = "#34495e"; // Reprend sa couleur sombre
+    }
+}
+
+// Variable temporaire pour stocker la catégorie en cours d'édition dans la modale
+let categorieEnCoursEdition = null;
+
+/**
+ * Ouvre la modale et initialise l'interface avec les données actuelles de la langue
+ */
+function ouvrirCategoriseur() {
+    if (!AppState.noeudSelectionneId) return alert("Veuillez d'abord sélectionner une Langue sur le graphe.");
+    
+    const node = cy.getElementById(AppState.noeudSelectionneId);
+    if (!node.data('label') || !node.data('label').startsWith('Vocabulaire :')) {
+        return alert("Le nœud sélectionné doit être une racine de Langue.");
+    }
+
+    // Affichage de la modale
+    document.getElementById('nom-langue-active').innerText = node.data('label').replace('Vocabulaire : ', '');
+    document.getElementById('modal-categoriseur').style.display = 'block';
+    document.getElementById('zone-edition-categorie').style.display = 'none';
+    categorieEnCoursEdition = null;
+
+    rafraichirInterfaceCategoriseur();
+}
+
+/**
+ * Redessine la liste des catégories à gauche de la modale
+ */
+function rafraichirInterfaceCategoriseur() {
+    const noeudLangue = cy.getElementById(AppState.noeudSelectionneId);
+    const zoneCategories = document.getElementById('liste-categories-zone');
+    zoneCategories.innerHTML = "";
+
+    // Trouver les sous-catégories (recherche par le nouvel attribut de sécurité)
+    const categoriesIdf = noeudLangue.neighborhood('node[type="categorie"]');
+
+    categoriesIdf.forEach(catNode => {
+        const nomCat = catNode.data('nom_categorie');
+        
+        const row = document.createElement('div');
+        row.style = "display: flex; justify-content: space-between; align-items: center; padding: 10px; background: white; border: 1px solid #cbd5e0; border-radius: 4px; gap: 10px;";
+        row.innerHTML = `
+            <span style="font-weight: bold; color: #2d3748; flex: 1;">📦 ${nomCat}</span>
+            <button class="btn-action primary" style="padding: 4px 10px; font-size: 0.8rem; background-color: #9b59b6;" onclick="editerMotsDeCategorie('${catNode.id()}')">Modifier</button>
+            <button class="btn-action danger" style="padding: 4px 10px; font-size: 0.8rem; background-color: #e74c3c;" onclick="supprimerCategorieFenetre('${catNode.id()}')">Supprimer</button>
+        `;
+        zoneCategories.appendChild(row);
+    });
+
+    if (categoriesIdf.length === 0) {
+        zoneCategories.innerHTML = `<p style="color: #718096; font-style: italic; text-align: center; margin: 20px 0;">Aucune catégorie pour le moment.</p>`;
+    }
+}
+
+/**
+ * Supprime une catégorie depuis la modale et réaffecte ses mots à la racine
+ */
+function supprimerCategorieFenetre(idCategorieNode) {
+    if(!confirm("Voulez-vous vraiment supprimer cette catégorie ? Les mots à l'intérieur seront replacés à la racine de la langue.")) return;
+
+    const catNode = cy.getElementById(idCategorieNode);
+    const langueId = AppState.noeudSelectionneId;
+
+    // 1. Trouver tous les mots actuellement connectés à cette catégorie
+    const motsEnfants = catNode.neighborhood('node[type="vocab"]').filter(n => n.data('is_category') !== true);
+
+    motsEnfants.forEach(motNode => {
+        // Rompre le lien avec la catégorie déchue
+        motNode.connectedEdges().filter(edge => edge.data('source') === idCategorieNode).remove();
+        
+        // Rebrancher sur la racine de la langue
+        cy.add({
+            group: 'edges',
+            data: { id: `e_vlr_${Date.now()}_${Math.random()}`, source: langueId, target: motNode.id() }
+        });
+        // Reset de son attribut de tri
+        motNode.data('categorie', null);
+    });
+
+    // 2. Supprimer définitivement le nœud catégorie (et ses liens structurels restants)
+    catNode.remove();
+
+    // 3. Si la zone de droite éditait cette catégorie, on la masque
+    if (categorieEnCoursEdition === idCategorieNode) {
+        document.getElementById('zone-edition-categorie').style.display = 'none';
+        categorieEnCoursEdition = null;
+    }
+
+    // 4. Actualisation visuelle du panneau gauche
+    rafraichirInterfaceCategoriseur();
+}
+
+/**
+ * Charge les mots à droite et coche ceux qui appartiennent déjà à la catégorie sélectionnée
+ */
+function editerMotsDeCategorie(idCategorieNode) {
+    categorieEnCoursEdition = idCategorieNode;
+    const catNode = cy.getElementById(idCategorieNode);
+    
+    document.getElementById('edition-categorie-titre').innerText = catNode.data('nom_categorie');
+    document.getElementById('zone-edition-categorie').style.display = 'block';
+
+    const noeudLangue = cy.getElementById(AppState.noeudSelectionneId);
+    
+    // On récupère TOUS les mots rattachés à cette langue (qu'ils soient déjà dans une catégorie ou non)
+    // Pour cela, on cherche tous les nœuds de type 'vocab' à proximité de la langue ou de ses sous-catégories
+    // Dans editerMotsDeCategorie(idCategorieNode), remplace la ligne "const tousLesMots = ..." par :
+    const tousLesMots = noeudLangue.neighborhood('node[type="vocab"]').filter(n => n.data('is_category') !== true)
+        .union(noeudLangue.neighborhood('node[type="categorie"]').neighborhood('node[type="vocab"]').filter(n => n.data('is_category') !== true));
+    
+    const zoneCheckboxes = document.getElementById('liste-mots-checkboxes');
+    zoneCheckboxes.innerHTML = "";
+
+    tousLesMots.forEach(motNode => {
+        const idMot = motNode.id();
+        const labelMot = motNode.data('label').split(' : ')[1]; // On affiche juste le mot, pas la définition complète
+        
+        // Est-ce que ce mot est actuellement relié à la catégorie en cours ?
+        const estDansLaCategorie = motNode.connectedEdges().filter(edge => edge.data('source') === idCategorieNode).length > 0;
+
+        const wrapper = document.createElement('label');
+        wrapper.style = "display: flex; align-items: center; gap: 8px; padding: 6px; background: white; border-radius: 4px; cursor: pointer; font-size: 0.9rem;";
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = "checkbox";
+        checkbox.checked = estDansLaCategorie;
+        // Événement en direct : quand on coche/décoche, on modifie les liens Cytoscape instantanément
+        checkbox.addEventListener('change', (e) => gererBasculeMotCategorie(idMot, idCategorieNode, e.target.checked));
+
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(document.createTextNode(labelMot));
+        zoneCheckboxes.appendChild(wrapper);
+    });
+}
+
+/**
+ * Gère le recâblage dynamique des liens dans Cytoscape
+ */
+function gererBasculeMotCategorie(idMot, idCategorie, coche) {
+    const motNode = cy.getElementById(idMot);
+    const langueId = AppState.noeudSelectionneId;
+
+    if (coche) {
+        // 1. On retire son ancien lien (qu'il vienne de la racine ou d'une autre catégorie)
+        motNode.connectedEdges().filter(edge => edge.data('source') === langueId || cy.getElementById(edge.data('source')).data('type') === 'sub_cat').remove();
+        
+        // 2. On crée le lien vers la nouvelle catégorie
+        cy.add({
+            group: 'edges',
+            data: { id: `e_vc_${Date.now()}_${Math.random()}`, source: idCategorie, target: idMot }
+        });
+        motNode.data('categorie', cy.getElementById(idCategorie).data('nom_categorie'));
+    } else {
+        // Si on décoche, on brise le lien avec la catégorie et on le réattache à la racine de la langue
+        motNode.connectedEdges().filter(edge => edge.data('source') === idCategorie).remove();
+        
+        cy.add({
+            group: 'edges',
+            data: { id: `e_vl_${Date.now()}_${Math.random()}`, source: langueId, target: idMot }
+        });
+        motNode.data('categorie', null);
+    }
+}
+
+/**
+ * Ajout manuel d'une catégorie par l'utilisateur
+ */
+function ajouterCategorieManuelle() {
+    const input = document.getElementById('nouvelle-cat-nom');
+    const nomCat = input.value.trim();
+    if (!nomCat) return;
+
+    const langueId = AppState.noeudSelectionneId;
+    const idCatNode = `cat_${langueId}_${nomCat.toLowerCase().replace(/\s/g, '')}`;
+
+    if (cy.getElementById(idCatNode).length > 0) return alert("Cette catégorie existe déjà.");
+
+    cy.add([
+        { 
+            group: 'nodes', 
+            data: { 
+                id: idCatNode, 
+                label: nomCat, 
+                type: 'categorie', // <-- Type propre et net
+                nom_categorie: nomCat,
+                statut: 'a_reviser'
+            }
+        },
+        { group: 'edges', data: { id: `e_c_${Date.now()}`, source: langueId, target: idCatNode } }
+    ]);
+
+    input.value = "";
+    rafraichirInterfaceCategoriseur();
+}
+
+/**
+ * Appelle l'IAQueueManager en séparant le rôle système du contenu utilisateur
+ * et traite le résultat via la fonction de rappel (callback)
+ */
+async function suggererCategoriesViaIA() {
+    const noeudLangue = cy.getElementById(AppState.noeudSelectionneId);
+    const tousLesMots = noeudLangue.neighborhood('node[type="vocab"]').union(noeudLangue.neighborhood('node[type="categorie"]').neighborhood('node[type="vocab"]'));
+    
+    if (tousLesMots.length === 0) return alert("Il n'y a aucun mot à analyser dans cette langue.");
+
+    const listeMotsTexte = tousLesMots.map(n => n.data('label').split(' : ')[0]).join(', ');
+    
+    const promptIdes = `
+    Tu es un algorithme de traitement de données pur. Tu ne dois générer AUCUNE phrase d'introduction, AUCUNE remarque, ni aucun texte explicatif.
+
+    Analyse ces mots de vocabulaire : [${listeMotsTexte}].
+    Suggère entre 3 et 6 noms de catégories logiques et thématiques pour les regrouper (ex: "Voyage", "Vie quotidienne").
+    
+    Format attendu : Tu dois TOUJOURS renvoyer uniquement un tableau JSON plat de chaînes de caractères.
+    Exemple de réponse valide :
+    ["Nombres", "Famille", "Aliments", "Transports"]
+
+    Consigne de sécurité absolue : Ne mets pas de balises de code Markdown (comme \`\`\`json ou \`\`\`). Renvoie directement le tableau brut commençant par [ et finissant par ].
+`;
+
+    const btn = document.getElementById('btn-cat-suggerer-ia');
+    btn.innerText = "⚡ L'IA réfléchit...";
+    btn.disabled = true;
+
+    try {
+        const reponse = await IAQueueManager.ajouterTache(promptIdes, listeMotsTexte);
+        const jsonNettoye = reponse.replace(/```json/g, "").replace(/```/g, "").trim();
+        const themes = JSON.parse(jsonNettoye);
+
+        if (Array.isArray(themes)) {
+            themes.forEach(theme => {
+                const idCatNode = `cat_${AppState.noeudSelectionneId}_${theme.toLowerCase().replace(/\s/g, '')}`;
+                if (cy.getElementById(idCatNode).length === 0) {
+                    cy.add([
+                        { 
+                            group: 'nodes', 
+                            data: { 
+                                id: idCatNode, 
+                                label: theme, 
+                                type: 'categorie', 
+                                is_category: true, 
+                                nom_categorie: theme,
+                                statut: 'a_reviser'
+                            } 
+                        },
+                        { group: 'edges', data: { id: `e_c_${Date.now()}_${Math.random()}`, source: AppState.noeudSelectionneId, target: idCatNode } }
+                    ]);
+                }
+            });
+            rafraichirInterfaceCategoriseur();
+            alert("Suggestions ajoutées !");
+        }
+    } catch (e) {
+        alert("Erreur lors de la suggestion IA.");
+    } finally {
+        btn.innerText = "🧠 Suggérer des thèmes via l'IA";
+        btn.disabled = false;
     }
 }
